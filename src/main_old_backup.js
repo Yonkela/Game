@@ -18,8 +18,8 @@ class MainScene extends Phaser.Scene {
     // Make the outside area look like grass and keep the interior floor distinct
     this.cameras.main.setBackgroundColor('#42f545'); // lighter grass green (requested)
 
-    // Floor margin so the green grass shows around the restaurant edges
-    const floorMargin = 24;
+    // Floor covers the entire interior (no margin)
+    const floorMargin = 0;
     const floorW = Math.max(0, W - floorMargin * 2);
     const floorH = Math.max(0, H - floorMargin * 2);
     const floorX = W/2;
@@ -50,11 +50,17 @@ class MainScene extends Phaser.Scene {
       table.patienceRemaining = 0;
       this.tables.add(table);
 
-      // Create customer as separate sprite with random color tint
-      const customer = this.add.image(p.x, p.y - 30, 'customer');
+      // Create customer as separate sprite with random color tint (start hidden at door)
+      const customer = this.add.image(0, 0, 'customer');
       customer.tableIndex = idx;
-      customer.visible = false; // will spawn at door and walk to table
-      customer.isWaiting = false; // walking until seated
+      customer.visible = false;
+      customer.isWaiting = false; // whether customer is currently at table
+      customer.state = 'idle'; // idle | walking | seated
+      customer.targetX = p.x;
+      customer.targetY = p.y - 30;
+      customer.walkSpeed = 60;
+      customer.path = [];
+      customer.pathIndex = 0;
       // Apply random color between #faa95c (light tan) and #4a321b (dark brown)
       customer.setTint(this.getRandomCustomerColor());
       this.customers.add(customer);
@@ -77,22 +83,24 @@ class MainScene extends Phaser.Scene {
     // Create perimeter walls around the whole restaurant (static bodies)
     this.walls = this.physics.add.staticGroup();
     // top wall with a large door in the middle
-    this.topDoorWidth = 50; // smaller door width (~50px requested)
-    this.topDoorCenterX = W / 2;
-    const topLeftWidth = this.topDoorCenterX - this.topDoorWidth / 2;
-    const topRightStart = this.topDoorCenterX + this.topDoorWidth / 2;
+    const topDoorWidth = 50; // smaller door width (~50px requested)
+    const topDoorCenterX = W / 2;
+    const topLeftWidth = topDoorCenterX - topDoorWidth / 2;
+    const topRightStart = topDoorCenterX + topDoorWidth / 2;
     const topRightWidth = W - topRightStart;
     const topLeftWall = this.add.rectangle(topLeftWidth / 2, 0, topLeftWidth, 8, 0x000000).setOrigin(0.5,0);
     const topRightWall = this.add.rectangle(topRightStart + topRightWidth / 2, 0, topRightWidth, 8, 0x000000).setOrigin(0.5,0);
     this.walls.add(topLeftWall);
     this.walls.add(topRightWall);
     // Top door block (closed by default). Hinged on its left side, swings outward (upwards) when opened.
-    this.topDoorStartX = this.topDoorCenterX - this.topDoorWidth/2;
-    this.topDoor = this.add.rectangle(this.topDoorStartX, 0, this.topDoorWidth, 12, 0x333333).setOrigin(0,0); // origin at left/top for hinge
+    const topDoorStartX = topDoorCenterX - topDoorWidth/2;
+    this.topDoor = this.add.rectangle(topDoorStartX, 0, topDoorWidth, 12, 0x333333).setOrigin(0,0); // origin at left/top for hinge
     this.topDoor.isOpen = false;
     this.walls.add(this.topDoor);
     // Interaction zone just inside the door
-    this.topDoorZone = new Phaser.Geom.Rectangle(this.topDoorStartX, 20, this.topDoorWidth, 36);
+    this.topDoorZone = new Phaser.Geom.Rectangle(topDoorStartX, 20, topDoorWidth, 36);
+    // Store door spawn position for customers
+    this.doorSpawnPos = { x: topDoorCenterX, y: 30 };
     // bottom wall
     const bottomWall = this.add.rectangle(W/2, H, W, 8, 0x000000).setOrigin(0.5,1);
     // left wall
@@ -157,15 +165,6 @@ class MainScene extends Phaser.Scene {
     // Camera
     this.cameras.main.startFollow(this.player, true, 0.08, 0.08);
 
-    // Build navigation grid for customers
-    this.buildNavGrid();
-
-    // Initial customer spawns: staggered arrivals from the top door
-    this.customers.getChildren().forEach((cust, i)=>{
-      const tbl = this.tables.getChildren()[cust.tableIndex];
-      this.time.delayedCall(500 + i*400, ()=> this.spawnCustomerForTable(tbl, cust));
-    });
-
     // Game state (load saved values)
     this.money = parseInt(localStorage.getItem('money')) || 0;
     this.cookSpeed = parseFloat(localStorage.getItem('cookSpeed')) || 1.0; // higher = faster
@@ -189,6 +188,19 @@ class MainScene extends Phaser.Scene {
 
     // Make some tables generate orders periodically
     this.time.addEvent({ delay: 3000, callback: () => this.maybeGenerateOrders(), loop:true });
+
+    // Spawn initial customers from door (staggered)
+    this.customers.getChildren().forEach((customer, idx) => {
+      this.time.delayedCall(500 + idx * 1000, () => {
+        if(customer && !customer.visible){
+          customer.x = this.doorSpawnPos.x;
+          customer.y = this.doorSpawnPos.y;
+          customer.visible = true;
+          customer.state = 'walking';
+          this.generateCustomerPath(customer);
+        }
+      }, [], this);
+    });
 
     // Autosave every 5 seconds
     this.autoSaveTimer = this.time.addEvent({ delay: 5000, callback: () => this.saveGame(), loop:true });
@@ -293,6 +305,7 @@ class MainScene extends Phaser.Scene {
     this.handleMovement(dt);
     this.rotatePlayerToDirection();
     this.handleInteraction();
+    this.updateCustomers(dt);
     this.updateTables(dt);
   }
 
@@ -348,7 +361,14 @@ class MainScene extends Phaser.Scene {
     const respawnDelay = Phaser.Math.Between(5000, 10000);
     this.time.delayedCall(respawnDelay, ()=>{
       if(customer && !customer.isWaiting){
-        // Reset table UI bits
+        // Spawn customer at door and start pathfinding to table
+        customer.x = this.doorSpawnPos.x;
+        customer.y = this.doorSpawnPos.y;
+        customer.visible = true;
+        customer.state = 'walking';
+        customer.isWaiting = false;
+        // Apply new random color when customer respawns
+        customer.setTint(this.getRandomCustomerColor());
         table.order = null;
         table.orderTaken = false;
         table.patienceRemaining = 0;
@@ -359,11 +379,57 @@ class MainScene extends Phaser.Scene {
         }
         if(table.orderText) table.orderText.destroy();
         if(table.patienceBar) table.patienceBar.destroy();
-        // New color and spawn from door
-        customer.setTint(this.getRandomCustomerColor());
-        this.spawnCustomerForTable(table, customer);
+        // Generate simple path to table
+        this.generateCustomerPath(customer);
       }
     }, [], this);
+  }
+
+  updateCustomers(dt){
+    // Update walking customers
+    this.customers.getChildren().forEach(customer => {
+      if(customer.state === 'walking' && customer.path && customer.path.length > 0){
+        const target = customer.path[customer.pathIndex];
+        if(!target) return;
+        const dx = target.x - customer.x;
+        const dy = target.y - customer.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if(dist < 5){
+          // Reached waypoint
+          customer.pathIndex++;
+          if(customer.pathIndex >= customer.path.length){
+            // Reached table
+            customer.state = 'seated';
+            customer.isWaiting = true;
+            customer.x = customer.targetX;
+            customer.y = customer.targetY;
+          }
+        } else {
+          // Move toward waypoint
+          const speed = customer.walkSpeed * (dt / 1000);
+          customer.x += (dx / dist) * speed;
+          customer.y += (dy / dist) * speed;
+        }
+      }
+    });
+  }
+
+  generateCustomerPath(customer){
+    // Simple pathfinding: generate waypoints to avoid tables
+    const table = this.tables.getChildren()[customer.tableIndex];
+    if(!table) return;
+    const startX = customer.x;
+    const startY = customer.y;
+    const endX = customer.targetX;
+    const endY = customer.targetY;
+    // Simple 3-point path: door -> midpoint (avoid tables) -> table
+    const midX = (startX + endX) / 2;
+    const midY = (startY + endY) / 2;
+    customer.path = [
+      { x: midX, y: midY },
+      { x: endX, y: endY }
+    ];
+    customer.pathIndex = 0;
   }
 
   handleMovement(dt){
@@ -510,166 +576,6 @@ class MainScene extends Phaser.Scene {
       if(Math.sqrt(dx*dx+dy*dy) <= radius) found = t;
     });
     return found;
-  }
-
-  // ---- Customer navigation and spawning ----
-  buildNavGrid(){
-    const W = this.scale.width, H = this.scale.height;
-    const cell = 16;
-    const cols = Math.ceil(W / cell);
-    const rows = Math.ceil(H / cell);
-    const blocked = new Array(rows*cols).fill(false);
-    const idx = (cx, cy)=> cy*cols + cx;
-    const markRect = (x, y, w, h)=>{
-      const x0 = Math.max(0, Math.floor(x / cell));
-      const y0 = Math.max(0, Math.floor(y / cell));
-      const x1 = Math.min(cols-1, Math.floor((x+w) / cell));
-      const y1 = Math.min(rows-1, Math.floor((y+h) / cell));
-      for(let cy=y0; cy<=y1; cy++){
-        for(let cx=x0; cx<=x1; cx++) blocked[idx(cx,cy)] = true;
-      }
-    };
-    const unmarkRect = (x, y, w, h)=>{
-      const x0 = Math.max(0, Math.floor(x / cell));
-      const y0 = Math.max(0, Math.floor(y / cell));
-      const x1 = Math.min(cols-1, Math.floor((x+w) / cell));
-      const y1 = Math.min(rows-1, Math.floor((y+h) / cell));
-      for(let cy=y0; cy<=y1; cy++){
-        for(let cx=x0; cx<=x1; cx++) blocked[idx(cx,cy)] = false;
-      }
-    };
-    // Perimeter walls (8px thick) except top door opening
-    const wallT = 8;
-    // Top wall left segment
-    const doorX = this.topDoorStartX || (W/2 - (this.topDoorWidth||50)/2);
-    const doorW = this.topDoorWidth || 50;
-    markRect(0, 0, doorX, wallT);
-    // Top wall right segment
-    markRect(doorX + doorW, 0, W - (doorX + doorW), wallT);
-    // Bottom, left, right walls
-    markRect(0, H - wallT, W, wallT);
-    markRect(0, 0, wallT, H);
-    markRect(W - wallT, 0, wallT, H);
-    // Divider wall (with door)
-    const dividerY = H * 0.65;
-    const doorWidth = 100;
-    const doorCenterX = W/2;
-    const leftWallWidth = doorCenterX - doorWidth/2;
-    const rightWallStart = doorCenterX + doorWidth/2;
-    const rightWallWidth = W - rightWallStart;
-    markRect(0, dividerY-4, leftWallWidth, 8);
-    markRect(rightWallStart, dividerY-4, rightWallWidth, 8);
-    // Tables as obstacles (add padding)
-    const pad = 12;
-    this.tables.getChildren().forEach(t=>{
-      const tw = 90, th = 40;
-      markRect(t.x - tw/2 - pad, t.y - th/2 - pad, tw + pad*2, th + pad*2);
-      // carve a small seat opening above the table so path can end there
-      unmarkRect(t.x - 10, t.y - 40, 20, 20);
-    });
-    // Kitchen, fridge, trashcan
-    const ksize = 32, kpad = 8;
-    if(this.kitchen) markRect(this.kitchen.x - ksize/2 - kpad, this.kitchen.y - ksize/2 - kpad, ksize + 2*kpad, ksize + 2*kpad);
-    if(this.fridge) markRect(this.fridge.x - 16 - kpad, this.fridge.y - 16 - kpad, 32 + 2*kpad, 32 + 2*kpad);
-    if(this.trashcan) markRect(this.trashcan.x - 16 - kpad, this.trashcan.y - 16 - kpad, 32 + 2*kpad, 32 + 2*kpad);
-    this.navGrid = { cell, cols, rows, blocked };
-  }
-
-  worldToGrid(x, y){
-    const g = this.navGrid; if(!g) return null;
-    const cx = Phaser.Math.Clamp(Math.floor(x / g.cell), 0, g.cols-1);
-    const cy = Phaser.Math.Clamp(Math.floor(y / g.cell), 0, g.rows-1);
-    return {cx, cy};
-  }
-  gridToWorld(cx, cy){
-    const g = this.navGrid; if(!g) return null;
-    return { x: cx * g.cell + g.cell/2, y: cy * g.cell + g.cell/2 };
-  }
-  isBlockedCell(cx, cy){
-    const g = this.navGrid; if(!g) return true;
-    if(cx < 0 || cy < 0 || cx >= g.cols || cy >= g.rows) return true;
-    return g.blocked[cy * g.cols + cx];
-  }
-
-  findPathAStar(start, goal){
-    const g = this.navGrid; if(!g) return null;
-    const startC = this.worldToGrid(start.x, start.y);
-    const goalC = this.worldToGrid(goal.x, goal.y);
-    if(!startC || !goalC) return null;
-    if(this.isBlockedCell(goalC.cx, goalC.cy)) return null;
-    const key = (cx,cy)=> `${cx},${cy}`;
-    const open = new Map();
-    const came = new Map();
-    const gScore = new Map();
-    const fScore = new Map();
-    const H = (cx,cy)=> Math.abs(cx - goalC.cx) + Math.abs(cy - goalC.cy);
-    const push = (cx,cy,gs)=>{ const k=key(cx,cy); gScore.set(k,gs); fScore.set(k, gs + H(cx,cy)); open.set(k, {cx,cy}); };
-    push(startC.cx, startC.cy, 0);
-    const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
-    while(open.size){
-      // pick node with lowest fScore
-      let currentK = null, current=null, best=Infinity;
-      for(const [k,n] of open){ const fs=fScore.get(k) ?? Infinity; if(fs < best){ best=fs; currentK=k; current=n; } }
-      if(!current) break;
-      if(current.cx === goalC.cx && current.cy === goalC.cy){
-        // reconstruct path
-        const path = [];
-        let ck = currentK;
-        while(ck){ const n = open.get(ck) || JSON.parse(`[${ck}]`); const [cx,cy] = ck.split(',').map(Number); path.push(this.gridToWorld(cx,cy)); ck = came.get(ck); }
-        path.reverse();
-        return path;
-      }
-      open.delete(currentK);
-      for(const [dx,dy] of dirs){
-        const nx = current.cx + dx, ny = current.cy + dy;
-        if(this.isBlockedCell(nx,ny)) continue;
-        const nk = key(nx,ny);
-        const tentative = (gScore.get(currentK) ?? Infinity) + 1;
-        if(tentative < (gScore.get(nk) ?? Infinity)){
-          came.set(nk, currentK);
-          gScore.set(nk, tentative);
-          fScore.set(nk, tentative + H(nx,ny));
-          if(!open.has(nk)) open.set(nk, {cx:nx, cy:ny});
-        }
-      }
-    }
-    return null;
-  }
-
-  moveCustomerAlongPath(customer, path, onComplete){
-    if(!path || path.length === 0){ onComplete && onComplete(); return; }
-    const speed = 80; // px/s
-    const tweens = [];
-    let from = {x: customer.x, y: customer.y};
-    path.forEach(pt=>{
-      const dx = pt.x - from.x, dy = pt.y - from.y;
-      const dist = Math.sqrt(dx*dx + dy*dy);
-      const dur = Math.max(50, (dist / speed) * 1000);
-      tweens.push({ targets: customer, x: pt.x, y: pt.y, duration: dur, ease: 'Linear' });
-      from = {x: pt.x, y: pt.y};
-    });
-    this.tweens.timeline({ tweens, onComplete: ()=> onComplete && onComplete() });
-  }
-
-  spawnCustomerForTable(table, customer){
-    // Start at the top door opening
-    const startX = (this.topDoorStartX || (this.scale.width/2 - (this.topDoorWidth||50)/2)) + (this.topDoorWidth||50)/2;
-    const startY = 16;
-    customer.setPosition(startX, startY);
-    customer.visible = true;
-    customer.isWaiting = false;
-    const goal = { x: table.x, y: table.y - 30 };
-    const path = this.findPathAStar({x:startX,y:startY}, goal);
-    if(path && path.length){
-      this.moveCustomerAlongPath(customer, path, ()=>{
-        customer.setPosition(goal.x, goal.y);
-        customer.isWaiting = true;
-      });
-    }else{
-      // Fallback: teleport
-      customer.setPosition(goal.x, goal.y);
-      customer.isWaiting = true;
-    }
   }
 
   onTableInteract(table){
