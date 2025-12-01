@@ -5,42 +5,102 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Top-Down Restaurant Game (Placeholder sprites)</title>
   <style>
-    body { margin:0; background:#222; color:#eee; font-family: Arial, Helvetica, sans-serif; }
+    @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap');
+    
+    body { margin:0; background:#42f545; color:#eee; font-family: 'Fredoka', sans-serif; }
     #game-container { width: 100%; height: 100vh; display:flex; align-items:center; justify-content:center; }
     #ui { position: absolute; left: 12px; top: 12px; color: #fff; z-index: 10; }
-    button { background:#1a73e8; color:white; border:none; padding:6px 10px; margin-top:6px; cursor:pointer; font-size:14px; }
-    button:disabled { background:#555; cursor:default }
-    button:hover:not(:disabled) { background:#1557b0; }
+    button { 
+      background:#1a73e8; 
+      color:white; 
+      border:none; 
+      padding:8px 16px; 
+      margin-top:8px; 
+      cursor:pointer; 
+      font-size:16px; 
+      font-family: 'Fredoka', sans-serif;
+      font-weight:600;
+      border-radius:16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      transition: all 0.2s ease;
+      transform: translateY(0);
+    }
+    button:disabled { background:#555; cursor:default; box-shadow: none; }
+    button:hover:not(:disabled) { background:#1557b0; transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,0.4); }
+    button:active:not(:disabled) { transform: translateY(0); box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
     
-    #upgradesModal { display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); z-index:1000; background:#1a1a1a; border:2px solid #1a73e8; border-radius:8px; padding:20px; width:90%; max-width:600px; max-height:80vh; overflow-y:auto; box-shadow:0 0 30px rgba(0,0,0,0.8); }
+    #upgradesModal { display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); z-index:1000; background:linear-gradient(135deg, #2a2a3a 0%, #1a1a2a 100%); border:3px solid #1a73e8; border-radius:24px; padding:24px; width:90%; max-width:600px; max-height:80vh; overflow-y:auto; box-shadow:0 8px 40px rgba(0,0,0,0.8); }
     #upgradesModal.show { display:block; }
-    #upgradesModal h2 { margin-top:0; color:#1a73e8; }
-    .upgrade-item { background:#2a2a2a; border:1px solid #444; border-radius:4px; padding:12px; margin:10px 0; display:flex; justify-content:space-between; align-items:center; }
+    #upgradesModal h2 { margin-top:0; color:#1a73e8; font-weight:700; font-size:28px; }
+    .upgrade-item { background:rgba(42,42,58,0.6); border:2px solid #444; border-radius:16px; padding:16px; margin:12px 0; display:flex; justify-content:space-between; align-items:center; transition: all 0.2s ease; }
+    .upgrade-item:hover { background:rgba(52,52,68,0.8); border-color:#1a73e8; transform: translateX(4px); }
     .upgrade-info { flex:1; }
-    .upgrade-info h3 { margin:0 0 4px 0; font-size:16px; }
-    .upgrade-info p { margin:0; font-size:12px; color:#aaa; }
-    .upgrade-cost { font-weight:bold; margin-right:10px; min-width:60px; text-align:right; }
+    .upgrade-info h3 { margin:0 0 4px 0; font-size:18px; font-weight:600; }
+    .upgrade-info p { margin:0; font-size:14px; color:#aaa; }
+    .upgrade-cost { font-weight:700; margin-right:12px; min-width:70px; text-align:right; font-size:16px; }
     .upgrade-item button { margin:0; }
-    #upgradesOverlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:999; }
+    #upgradesOverlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:999; backdrop-filter: blur(4px); }
     #upgradesOverlay.show { display:block; }
-    #closeUpgradesBtn { float:right; background:#555; padding:4px 8px; cursor:pointer; border:none; color:#fff; }
+    #closeUpgradesBtn { float:right; background:#555; padding:6px 12px; cursor:pointer; border:none; color:#fff; border-radius:12px; }
     #closeUpgradesBtn:hover { background:#666; }
     /* Fridge modal styles */
-    #fridgeOverlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:999; }
+    #fridgeOverlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:999; backdrop-filter: blur(4px); }
     #fridgeOverlay.show { display:block; }
-    #fridgeModal { display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); z-index:1000; background:#1a1a1a; border:2px solid #10b981; border-radius:8px; padding:16px; width:90%; max-width:420px; box-shadow:0 0 30px rgba(0,0,0,0.8); }
+    #fridgeModal { display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); z-index:1000; background:linear-gradient(135deg, #2a2a3a 0%, #1a1a2a 100%); border:3px solid #10b981; border-radius:24px; padding:20px; width:90%; max-width:420px; box-shadow:0 8px 40px rgba(0,0,0,0.8); }
     #fridgeModal.show { display:block; }
-    #fridgeModal h3 { margin:0 0 8px 0; color:#10b981; }
-    .fridge-grid { display:flex; gap:8px; justify-content:space-between; }
-    .fridge-btn { flex:1; padding:12px; border-radius:6px; border:none; color:#111; font-weight:bold; cursor:pointer; }
+    #fridgeModal h3 { margin:0 0 12px 0; color:#10b981; font-weight:700; font-size:24px; }
+    .fridge-grid { display:flex; gap:12px; justify-content:space-between; }
+    .fridge-btn { flex:1; padding:16px; border-radius:16px; border:none; color:#111; font-weight:700; cursor:pointer; font-size:15px; transition: all 0.2s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+    .fridge-btn:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,0.4); }
+    .fridge-btn:active { transform: translateY(0); box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
     .fridge-salad { background:#22c55e; }
     .fridge-burger { background:#ef4444; }
     .fridge-pizza { background:#eab308; }
     .fridge-soup { background:#d2b48c; }
-    #closeFridgeBtn { background:#555; color:#fff; border:none; padding:6px 8px; border-radius:4px; cursor:pointer; float:right; }
+    #closeFridgeBtn { background:#555; color:#fff; border:none; padding:6px 12px; border-radius:12px; cursor:pointer; float:right; }
+    /* Menu screen styles */
+    #menuScreen { position:fixed; top:0; left:0; width:100%; height:100%; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); z-index:2000; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+    #menuScreen.hidden { display:none; }
+    #menuScreen h1 { color:#fff; font-size:56px; margin-bottom:50px; font-weight:700; text-shadow: 0 4px 20px rgba(0,0,0,0.4); letter-spacing: 2px; }
+    .menu-btn { background:linear-gradient(135deg, #1a73e8 0%, #1557b0 100%); color:#fff; border:none; padding:18px 40px; margin:12px; cursor:pointer; font-size:20px; font-weight:700; border-radius:20px; min-width:240px; box-shadow: 0 6px 20px rgba(0,0,0,0.4); transition: all 0.2s ease; }
+    .menu-btn:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,0.5); background:linear-gradient(135deg, #1557b0 0%, #0f3d7a 100%); }
+    .menu-btn:active { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
+    #loadSaveMenu { display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); z-index:2010; background:linear-gradient(135deg, #2a2a3a 0%, #1a1a2a 100%); border:3px solid #1a73e8; border-radius:24px; padding:24px; width:90%; max-width:600px; max-height:70vh; overflow-y:auto; box-shadow:0 8px 40px rgba(0,0,0,0.8); }
+    #loadSaveMenu.show { display:block; }
+    #loadSaveMenu h2 { margin:0 0 20px 0; color:#1a73e8; font-weight:700; font-size:28px; }
+    .save-slot { background:rgba(42,42,58,0.6); border:2px solid #444; border-radius:16px; padding:16px; margin:10px 0; display:flex; justify-content:space-between; align-items:center; transition: all 0.2s ease; }
+    .save-slot:hover { background:rgba(52,52,68,0.8); border-color:#1a73e8; transform: translateX(4px); }
+    .save-info { flex:1; }
+    .save-info h3 { margin:0 0 4px 0; font-size:18px; color:#1a73e8; font-weight:600; }
+    .save-info p { margin:0; font-size:14px; color:#aaa; }
+    .save-actions { display:flex; gap:10px; }
+    .save-actions button { padding:8px 16px; font-size:15px; }
+    .delete-btn { background:#e74c3c !important; }
+    .delete-btn:hover { background:#c0392b !important; }
+    #closeLoadMenu { float:right; background:#555; padding:6px 12px; cursor:pointer; border:none; color:#fff; border-radius:12px; }
+    #loadMenuOverlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:2005; backdrop-filter: blur(4px); }
+    #loadMenuOverlay.show { display:block; }
+    #menuBtn { background:linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
+    #menuBtn:hover { background:linear-gradient(135deg, #d97706 0%, #b45309 100%); }
   </style>
 </head>
 <body>
+  <!-- Menu screen (shown on page load) -->
+  <div id="menuScreen">
+    <h1>Restaurant Game</h1>
+    <button class="menu-btn" onclick="GameMenu.newSave()">New Save</button>
+    <button class="menu-btn" onclick="GameMenu.continueSave()">Continue</button>
+    <button class="menu-btn" onclick="GameMenu.showLoadMenu()">Load Save</button>
+  </div>
+
+  <!-- Load save submenu overlay and modal -->
+  <div id="loadMenuOverlay" onclick="GameMenu.closeLoadMenu()"></div>
+  <div id="loadSaveMenu">
+    <button id="closeLoadMenu" onclick="GameMenu.closeLoadMenu()">✕</button>
+    <h2>Load a Save</h2>
+    <div id="saveSlotsList"></div>
+  </div>
+
   <div id="game-container"></div>
   <div id="ui">
     <div id="money">Money: $0</div>
@@ -48,6 +108,7 @@
     <div id="order">Holding: -</div>
     <div id="saveStatus" style="color:#7cfc7c;height:18px"></div>
     <button id="upgradesBtn">Upgrades</button>
+    <button id="menuBtn" onclick="GameMenu.returnToMenu()">Menu</button>
   </div>
 
   <div id="upgradesOverlay"></div>
@@ -72,6 +133,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
+  <script src="src/menu.js"></script>
   <script src="src/main.js"></script>
 </body>
 </html>

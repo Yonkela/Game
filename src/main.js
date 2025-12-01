@@ -1,11 +1,27 @@
 class MainScene extends Phaser.Scene {
   constructor() { super('MainScene'); }
+  // Logging helpers for robustness
+  logInfo(msg){ try{ console.log('[GameInfo] '+msg); }catch(e){} }
+  logWarn(msg){ try{ console.warn('[GameWarn] '+msg); }catch(e){} }
   preload() {
     // Try to load user-supplied player image; if it's missing, we'll fall back to a runtime placeholder.
-    this.load.image('player', 'assets/dude2.0.png');
-    this.load.image('oven', 'assets/Oven.png');
+    this.load.image('player', 'assets/Dude3.0.png');
+    this.load.image('oven', 'assets/Oven2.0.png');
+    this.load.image('fridge', 'assets/Fridge.png');
+    this.load.image('trashcan', 'assets/Trashcan.png');
     // Floor image for the restaurant interior (user-supplied)
-    this.load.image('floor', 'assets/image.png');
+    this.load.image('floor', 'assets/FLOOR.png');
+    // Table image (use user asset if present)
+    this.load.image('table', 'assets/Table.png');
+    // Food images
+    this.load.image('Burger', 'assets/Burger2.0.png');
+    this.load.image('Pizza', 'assets/pizza2.0.png');
+    this.load.image('Salad', 'assets/Salad2.0.png');
+    this.load.image('Soup', 'assets/Soup2.0.png');
+    // Customer sprites
+    this.load.image('blackDude', 'assets/blackDude.png');
+    this.load.image('whiteDude', 'assets/whiteDude.png');
+    this.load.image('blondeLady', 'assets/blondeLady.png');
   }
   create() {
     const W = this.scale.width; const H = this.scale.height;
@@ -19,7 +35,8 @@ class MainScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#42f545'); // lighter grass green (requested)
 
     // Floor margin so the green grass shows around the restaurant edges
-    const floorMargin = 24;
+    // User requested the floor reach the walls, so remove margin
+    const floorMargin = 0;
     const floorW = Math.max(0, W - floorMargin * 2);
     const floorH = Math.max(0, H - floorMargin * 2);
     const floorX = W/2;
@@ -42,6 +59,8 @@ class MainScene extends Phaser.Scene {
     tablePositions.forEach((p, idx)=>{
       // Create table (without customer)
       const table = this.add.image(p.x, p.y, 'table');
+      // Ensure consistent display size regardless of source image dimensions
+      table.setDisplaySize(50, 40);
       table.order = null;
       table.orderTaken = false;
       table.orderText = null;
@@ -50,13 +69,15 @@ class MainScene extends Phaser.Scene {
       table.patienceRemaining = 0;
       this.tables.add(table);
 
-      // Create customer as separate sprite with random color tint
-      const customer = this.add.image(p.x, p.y - 30, 'customer');
+      // Create customer as separate sprite with random sprite choice
+      const customerSprites = ['blackDude', 'whiteDude', 'blondeLady'];
+      const randomSprite = Phaser.Utils.Array.GetRandom(customerSprites);
+      const customer = this.add.image(p.x, p.y - 30, randomSprite);
+      customer.setDisplaySize(24, 24);
+      customer.setAngle(180);
       customer.tableIndex = idx;
       customer.visible = false; // will spawn at door and walk to table
       customer.isWaiting = false; // walking until seated
-      // Apply random color between #faa95c (light tan) and #4a321b (dark brown)
-      customer.setTint(this.getRandomCustomerColor());
       this.customers.add(customer);
     });
 
@@ -67,11 +88,11 @@ class MainScene extends Phaser.Scene {
     this.kitchenZone = new Phaser.Geom.Rectangle(centerX - 80, H - 140, 160, 80);
     
     // Place fridge to the left of the oven
-    this.fridge = this.add.rectangle(centerX - 100, H - 80, 32, 32, 0x4b5563).setOrigin(0.5);
+    this.fridge = this.add.image(centerX - 100, H - 80, 'fridge').setOrigin(0.5).setDisplaySize(32, 32);
     this.fridgeZone = new Phaser.Geom.Rectangle(centerX - 150, H - 140, 120, 80);
     
     // Place trash can to the right of the oven
-    this.trashcan = this.add.image(centerX + 100, H - 80, 'trashcan').setOrigin(0.5).setDisplaySize(32, 32);
+    this.trashcan = this.add.image(centerX + 100, H - 80, 'trashcan').setOrigin(0.5).setDisplaySize(46, 32);
     this.trashcanZone = new Phaser.Geom.Rectangle(centerX + 50, H - 140, 120, 80);
 
     // Create perimeter walls around the whole restaurant (static bodies)
@@ -82,23 +103,33 @@ class MainScene extends Phaser.Scene {
     const topLeftWidth = this.topDoorCenterX - this.topDoorWidth / 2;
     const topRightStart = this.topDoorCenterX + this.topDoorWidth / 2;
     const topRightWidth = W - topRightStart;
-    const topLeftWall = this.add.rectangle(topLeftWidth / 2, 0, topLeftWidth, 8, 0x000000).setOrigin(0.5,0);
-    const topRightWall = this.add.rectangle(topRightStart + topRightWidth / 2, 0, topRightWidth, 8, 0x000000).setOrigin(0.5,0);
-    this.walls.add(topLeftWall);
-    this.walls.add(topRightWall);
+    const topLeftWall = this.add.graphics().fillStyle(0x8b4513, 1).fillRoundedRect(0, 0, topLeftWidth, 8, 4);
+    const topRightWall = this.add.graphics().fillStyle(0x8b4513, 1).fillRoundedRect(topRightStart, 0, topRightWidth, 8, 4);
+    // Convert graphics to physics bodies
+    const topLeftBody = this.add.rectangle(topLeftWidth / 2, 0, topLeftWidth, 8, 0x8b4513, 0).setOrigin(0.5,0);
+    const topRightBody = this.add.rectangle(topRightStart + topRightWidth / 2, 0, topRightWidth, 8, 0x8b4513, 0).setOrigin(0.5,0);
+    this.walls.add(topLeftBody);
+    this.walls.add(topRightBody);
     // Top door block (closed by default). Hinged on its left side, swings outward (upwards) when opened.
     this.topDoorStartX = this.topDoorCenterX - this.topDoorWidth/2;
-    this.topDoor = this.add.rectangle(this.topDoorStartX, 0, this.topDoorWidth, 12, 0x333333).setOrigin(0,0); // origin at left/top for hinge
+    // Create door graphic positioned at hinge point
+    this.topDoorGraphic = this.add.graphics({x: this.topDoorStartX, y: 0});
+    this.topDoorGraphic.fillStyle(0x6b4423, 1);
+    this.topDoorGraphic.fillRoundedRect(0, 0, this.topDoorWidth, 12, 4);
+    this.topDoor = this.add.rectangle(this.topDoorStartX, 0, this.topDoorWidth, 12, 0x6b4423, 0).setOrigin(0,0); // origin at left/top for hinge
     this.topDoor.isOpen = false;
     this.walls.add(this.topDoor);
     // Interaction zone just inside the door
     this.topDoorZone = new Phaser.Geom.Rectangle(this.topDoorStartX, 20, this.topDoorWidth, 36);
     // bottom wall
-    const bottomWall = this.add.rectangle(W/2, H, W, 8, 0x000000).setOrigin(0.5,1);
+    this.add.graphics().fillStyle(0x8b4513, 1).fillRoundedRect(0, H - 8, W, 8, 4);
+    const bottomWall = this.add.rectangle(W/2, H, W, 8, 0x8b4513, 0).setOrigin(0.5,1);
     // left wall
-    const leftWall = this.add.rectangle(0, H/2, 8, H, 0x000000).setOrigin(0,0.5);
+    this.add.graphics().fillStyle(0x8b4513, 1).fillRoundedRect(0, 0, 8, H, 4);
+    const leftWall = this.add.rectangle(0, H/2, 8, H, 0x8b4513, 0).setOrigin(0,0.5);
     // right wall
-    const rightWall = this.add.rectangle(W, H/2, 8, H, 0x000000).setOrigin(1,0.5);
+    this.add.graphics().fillStyle(0x8b4513, 1).fillRoundedRect(W - 8, 0, 8, H, 4);
+    const rightWall = this.add.rectangle(W, H/2, 8, H, 0x8b4513, 0).setOrigin(1,0.5);
     this.walls.add(bottomWall);
     this.walls.add(leftWall);
     this.walls.add(rightWall);
@@ -109,12 +140,14 @@ class MainScene extends Phaser.Scene {
     const doorCenterX = W / 2;
     // Left section of wall (before door)
     const leftWallWidth = doorCenterX - doorWidth / 2;
-    const leftDoorWall = this.add.rectangle(leftWallWidth / 2, dividerY, leftWallWidth, 8, 0x000000);
+    this.add.graphics().fillStyle(0x8b4513, 1).fillRoundedRect(0, dividerY - 4, leftWallWidth, 8, 4);
+    const leftDoorWall = this.add.rectangle(leftWallWidth / 2, dividerY, leftWallWidth, 8, 0x8b4513, 0);
     this.walls.add(leftDoorWall);
     // Right section of wall (after door)
     const rightWallStart = doorCenterX + doorWidth / 2;
     const rightWallWidth = W - rightWallStart;
-    const rightDoorWall = this.add.rectangle(rightWallStart + rightWallWidth / 2, dividerY, rightWallWidth, 8, 0x000000);
+    this.add.graphics().fillStyle(0x8b4513, 1).fillRoundedRect(rightWallStart, dividerY - 4, rightWallWidth, 8, 4);
+    const rightDoorWall = this.add.rectangle(rightWallStart + rightWallWidth / 2, dividerY, rightWallWidth, 8, 0x8b4513, 0);
     this.walls.add(rightDoorWall);
 
     // Player - if the 'player' texture failed to load, create a placeholder now
@@ -122,6 +155,8 @@ class MainScene extends Phaser.Scene {
       this.createPlayerPlaceholder();
     }
     this.player = this.physics.add.sprite(120, H/2, 'player');
+    this.player.setAngle(180);
+    this.player.setDisplaySize(32, 32);
     this.player.setCollideWorldBounds(true);
     this.player.speed = 160;
     this.player.holding = null; // either order string or food object
@@ -166,9 +201,10 @@ class MainScene extends Phaser.Scene {
       this.time.delayedCall(500 + i*400, ()=> this.spawnCustomerForTable(tbl, cust));
     });
 
-    // Game state (load saved values)
-    this.money = parseInt(localStorage.getItem('money')) || 0;
-    this.cookSpeed = parseFloat(localStorage.getItem('cookSpeed')) || 1.0; // higher = faster
+    // Game state (load from current save slot)
+    const saveData = this.loadSlotData();
+    this.money = saveData.money;
+    this.cookSpeed = saveData.cookSpeed;
     this.isCooking = false;
 
     // UI elements
@@ -180,12 +216,16 @@ class MainScene extends Phaser.Scene {
     document.getElementById('closeUpgradesBtn').addEventListener('click', ()=> this.closeUpgradesModal());
     document.getElementById('upgradesOverlay').addEventListener('click', ()=> this.closeUpgradesModal());
 
-    // Initialize upgrade state
+    // Initialize upgrade state from save
     this.upgrades = {
-      ovenSpeed: parseInt(localStorage.getItem('upgradeOvenSpeed')) || 0,
-      earnRate: parseInt(localStorage.getItem('upgradeEarnRate')) || 0,
-      patience: parseInt(localStorage.getItem('upgradePatience')) || 0
+      ovenSpeed: saveData.upgradeOvenSpeed,
+      earnRate: saveData.upgradeEarnRate,
+      patience: saveData.upgradePatience,
+      playerSpeed: saveData.upgradePlayerSpeed
     };
+
+    // Apply player speed upgrade immediately
+    this.recalcPlayerSpeed();
 
     // Make some tables generate orders periodically
     this.time.addEvent({ delay: 3000, callback: () => this.maybeGenerateOrders(), loop:true });
@@ -213,12 +253,83 @@ class MainScene extends Phaser.Scene {
     const b = Math.round(color1.b + (color2.b - color1.b) * t);
     return (r << 16) | (g << 8) | b;
   }
+  // ---- Robust storage helpers ----
+  safeGetInt(key){
+    try{ const v = localStorage.getItem(key); return v === null ? 0 : (parseInt(v)||0); }catch(e){ this.logWarn('Failed int get '+key); return 0; }
+  }
+  safeGetFloat(key, def=0){
+    try{ const v = localStorage.getItem(key); return v === null ? def : (parseFloat(v)||def); }catch(e){ this.logWarn('Failed float get '+key); return def; }
+  }
+  safeSet(key, val){
+    try{ localStorage.setItem(key, String(val)); }catch(e){ this.logWarn('Failed set '+key); }
+  }
+
+  // ---- Save slot system ----
+  getCurrentSaveSlot() {
+    try {
+      return localStorage.getItem('currentSaveSlot') || 'default';
+    } catch (e) {
+      return 'default';
+    }
+  }
+
+  loadSlotData() {
+    const slotName = this.getCurrentSaveSlot();
+    try {
+      const saveKey = `save_${slotName}`;
+      const saveData = localStorage.getItem(saveKey);
+      if (!saveData) {
+        return { money: 0, cookSpeed: 1, upgradeOvenSpeed: 0, upgradeEarnRate: 0, upgradePatience: 0, upgradePlayerSpeed: 0 };
+      }
+      const parsed = JSON.parse(saveData);
+      return {
+        money: parsed.money || 0,
+        cookSpeed: parsed.cookSpeed || 1,
+        upgradeOvenSpeed: parsed.upgradeOvenSpeed || 0,
+        upgradeEarnRate: parsed.upgradeEarnRate || 0,
+        upgradePatience: parsed.upgradePatience || 0,
+        upgradePlayerSpeed: parsed.upgradePlayerSpeed || 0
+      };
+    } catch (e) {
+      this.logWarn('Failed to load slot data');
+      return { money: this.safeGetInt('money'), cookSpeed: this.safeGetFloat('cookSpeed', 1), upgradeOvenSpeed: this.safeGetInt('upgradeOvenSpeed'), upgradeEarnRate: this.safeGetInt('upgradeEarnRate'), upgradePatience: this.safeGetInt('upgradePatience'), upgradePlayerSpeed: this.safeGetInt('upgradePlayerSpeed') };
+    }
+  }
+
+  saveSlotData() {
+    const slotName = this.getCurrentSaveSlot();
+    const saveData = {
+      money: this.money || 0,
+      cookSpeed: this.cookSpeed || 1,
+      upgradeOvenSpeed: (this.upgrades && this.upgrades.ovenSpeed) || 0,
+      upgradeEarnRate: (this.upgrades && this.upgrades.earnRate) || 0,
+      upgradePatience: (this.upgrades && this.upgrades.patience) || 0,
+      upgradePlayerSpeed: (this.upgrades && this.upgrades.playerSpeed) || 0,
+      timestamp: Date.now()
+    };
+    try {
+      const saveKey = `save_${slotName}`;
+      localStorage.setItem(saveKey, JSON.stringify(saveData));
+      this.safeSet('money', this.money);
+      this.safeSet('cookSpeed', this.cookSpeed || 1);
+      this.safeSet('upgradeOvenSpeed', saveData.upgradeOvenSpeed);
+      this.safeSet('upgradeEarnRate', saveData.upgradeEarnRate);
+      this.safeSet('upgradePatience', saveData.upgradePatience);
+      this.safeSet('upgradePlayerSpeed', saveData.upgradePlayerSpeed);
+      return true;
+    } catch (e) {
+      this.logWarn('Failed to save slot data');
+      return false;
+    }
+  }
 
   createTextures(){
     // Generate placeholder textures. If `withPlayer` is true, also create a player placeholder.
     const g = this.make.graphics({x:0,y:0,add:false});
     // Table (brown rectangle)
-    g.fillStyle(0xa16207,1); g.fillRect(0,0,90,40); g.generateTexture('table',90,40);
+    if(!this.textures.exists('table')){
+      g.fillStyle(0xa16207,1); g.fillRect(0,0,50,40); g.generateTexture('table',50,40);
+    }
     g.clear();
     // Customer (circle - will be tinted per customer)
     g.fillStyle(0xffffff,1); g.fillCircle(12,12,12); g.generateTexture('customer',24,24);
@@ -228,16 +339,24 @@ class MainScene extends Phaser.Scene {
     g.clear();
     // Food placeholders - colored circles
     // Salad - green
-    g.fillStyle(0x22c55e,1); g.fillCircle(14,14,12); g.generateTexture('Salad',28,28);
+    if(!this.textures.exists('Salad')){
+      g.fillStyle(0x22c55e,1); g.fillCircle(14,14,12); g.generateTexture('Salad',28,28);
+    }
     g.clear();
     // Burger - red
-    g.fillStyle(0xef4444,1); g.fillCircle(14,14,12); g.generateTexture('Burger',28,28);
+    if(!this.textures.exists('Burger')){
+      g.fillStyle(0xef4444,1); g.fillCircle(14,14,12); g.generateTexture('Burger',28,28);
+    }
     g.clear();
     // Pizza - yellow
-    g.fillStyle(0xeab308,1); g.fillCircle(14,14,12); g.generateTexture('Pizza',28,28);
+    if(!this.textures.exists('Pizza')){
+      g.fillStyle(0xeab308,1); g.fillCircle(14,14,12); g.generateTexture('Pizza',28,28);
+    }
     g.clear();
     // Soup - tan
-    g.fillStyle(0xd2b48c,1); g.fillCircle(14,14,12); g.generateTexture('Soup',28,28);
+    if(!this.textures.exists('Soup')){
+      g.fillStyle(0xd2b48c,1); g.fillCircle(14,14,12); g.generateTexture('Soup',28,28);
+    }
     g.clear();
     // Uncooked versions (grayed out)
     // Raw Salad - gray-green
@@ -253,7 +372,9 @@ class MainScene extends Phaser.Scene {
     g.fillStyle(0x9ca3af,1); g.fillCircle(14,14,12); g.generateTexture('RawSoup',28,28);
     g.clear();
     // Trash can (dark gray/black)
-    g.fillStyle(0x1f2937,1); g.fillRect(0,0,32,32); g.generateTexture('trashcan',32,32);
+    if(!this.textures.exists('trashcan')){
+      g.fillStyle(0x1f2937,1); g.fillRect(0,0,32,32); g.generateTexture('trashcan',32,32);
+    }
     g.clear();
   }
 
@@ -297,47 +418,36 @@ class MainScene extends Phaser.Scene {
   }
 
   updateTables(dt){
-    // decrement patience for tables with orders
+    if(!this.tables || !this.customers) return;
     this.tables.getChildren().forEach((table, idx)=>{
-      if(table.order){
-        table.patienceRemaining -= dt;
-        // update patience bar
-        if(table.patienceBar){
-          const pct = Phaser.Math.Clamp(table.patienceRemaining / table.patienceMax, 0, 1);
-          table.patienceBar.clear();
-          const bx = table.x - 30; const by = table.y - 72;
-          table.patienceBar.fillStyle(0x000000, 0.7);
-          table.patienceBar.fillRect(bx, by, 64, 8);
-          table.patienceBar.fillStyle(pct > 0.5 ? 0x10b981 : (pct > 0.2 ? 0xf59e0b : 0xef4444), 1);
-          table.patienceBar.fillRect(bx + 2, by + 2, Math.max(0, (64 - 4) * pct), 4);
-        }
-        if(table.patienceRemaining <= 0){
-          // customer leaves angrily
-          const customer = this.customers.getChildren()[idx];
-          this.onCustomerLeave(table, customer);
-        }
+      if(!table.order) return;
+      table.patienceRemaining -= dt;
+      if(table.patienceBar){
+        const pct = Phaser.Math.Clamp(table.patienceRemaining / table.patienceMax, 0, 1);
+        table.patienceBar.clear();
+        const barWidth = 64;
+        const bx = table.x - barWidth/2; const by = table.y - 108;
+        table.patienceBar.fillStyle(0x000000, 0.7);
+        table.patienceBar.fillRect(bx, by, barWidth, 8);
+        table.patienceBar.fillStyle(pct > 0.5 ? 0x10b981 : (pct > 0.2 ? 0xf59e0b : 0xef4444), 1);
+        table.patienceBar.fillRect(bx + 2, by + 2, Math.max(0, (barWidth - 4) * pct), 4);
+      }
+      if(table.patienceRemaining <= 0){
+        const customer = this.customers.getChildren()[idx];
+        this.onCustomerLeave(table, customer);
       }
     });
   }
 
   onCustomerLeave(table, customer){
-    // Destroy speech bubble
-    if(table.orderBubble){
-      if(table.orderBubble.graphics) table.orderBubble.graphics.destroy();
-      if(table.orderBubble.textObj) table.orderBubble.textObj.destroy();
-      table.orderBubble = null;
-    }
-    if(table.orderText) table.orderText.destroy();
-    if(table.patienceBar) table.patienceBar.destroy();
+    // Destroy speech bubble & UI via helper
+    this.resetTableUI(table);
     // clear order and clear player's ticket if it was for this table
     const tableIdx = this.tables.getChildren().indexOf(table);
     if(this.player && this.player.orderTicket && this.player.orderTicket.tableIndex === tableIdx){
       this.player.orderTicket = null;
     }
-    table.order = null;
-    table.orderTaken = false;
-    table.patienceRemaining = 0;
-    table.patienceMax = 0;
+    // already reset via helper above
     // Hide customer
     customer.visible = false;
     customer.isWaiting = false;
@@ -349,16 +459,7 @@ class MainScene extends Phaser.Scene {
     this.time.delayedCall(respawnDelay, ()=>{
       if(customer && !customer.isWaiting){
         // Reset table UI bits
-        table.order = null;
-        table.orderTaken = false;
-        table.patienceRemaining = 0;
-        if(table.orderBubble){
-          if(table.orderBubble.graphics) table.orderBubble.graphics.destroy();
-          if(table.orderBubble.textObj) table.orderBubble.textObj.destroy();
-          table.orderBubble = null;
-        }
-        if(table.orderText) table.orderText.destroy();
-        if(table.patienceBar) table.patienceBar.destroy();
+        this.resetTableUI(table);
         // New color and spawn from door
         customer.setTint(this.getRandomCustomerColor());
         this.spawnCustomerForTable(table, customer);
@@ -391,18 +492,48 @@ class MainScene extends Phaser.Scene {
       this.player.foodDisplay.y = this.player.y + vyNorm * distInFront;
       // Update texture to match the food/ingredient type
       this.player.foodDisplay.setTexture(this.player.holding.name);
+      this.player.foodDisplay.setDisplaySize(28, 28);
       this.player.foodDisplay.setVisible(true);
     } else {
       this.player.foodDisplay.setVisible(false);
     }
   }
 
+  recalcPlayerSpeed(){
+    if(!this.player){ this.logWarn('Player missing for speed recalc'); return; }
+    const base = 160;
+    const level = (this.upgrades && this.upgrades.playerSpeed) ? this.upgrades.playerSpeed : 0;
+    // 20% speed increase per level
+    this.player.speed = base * (1 + 0.20 * level);
+  }
+
+  // Reset transient table UI & state (added for robustness)
+  resetTableUI(table){
+    if(!table) return;
+    if(table.orderBubble){
+      if(table.orderBubble.graphics) table.orderBubble.graphics.destroy();
+      if(table.orderBubble.textObj) table.orderBubble.textObj.destroy();
+      table.orderBubble = null;
+    }
+    if(table.orderText){ table.orderText.destroy(); table.orderText = null; }
+    if(table.patienceBar){ table.patienceBar.destroy(); table.patienceBar = null; }
+    table.order = null;
+    table.orderTaken = false;
+    table.patienceRemaining = 0;
+    table.patienceMax = 0;
+  }
+
   rotatePlayerToDirection(){
-    // Rotate player sprite based on last movement direction
+    // Rotate player sprite based on last movement direction with smooth interpolation
     const vx = this.player.lastVelX;
     const vy = this.player.lastVelY;
-    const angle = Math.atan2(vy, vx) * Phaser.Math.RAD_TO_DEG;
-    this.player.setRotation(Phaser.Math.DegToRad(angle - 90)); // -90 to face forward
+    if(vx === 0 && vy === 0) return; // Don't rotate if not moving
+    const targetAngle = Math.atan2(vy, vx) * Phaser.Math.RAD_TO_DEG;
+    const targetRotation = Phaser.Math.DegToRad(targetAngle - 90 + 180); // -90 to face forward, +180 to flip sprite
+    // Smooth rotation using lerp (0.15 = rotation speed, lower = smoother but slower)
+    const currentRotation = this.player.rotation;
+    const newRotation = Phaser.Math.Angle.RotateTo(currentRotation, targetRotation, 0.15);
+    this.player.setRotation(newRotation);
   }
 
   handleInteraction(){
@@ -443,8 +574,8 @@ class MainScene extends Phaser.Scene {
     this.topDoor.isOpen = true;
     // Disable collision while open
     if(this.topDoor.body) this.topDoor.body.enable = false;
-    // Animate rotation outward in opposite direction (counter-clockwise)
-    this.tweens.add({ targets: this.topDoor, angle: -90, duration: 300, ease: 'Sine.easeOut' });
+    // Animate rotation outward for both graphic and physics body
+    this.tweens.add({ targets: [this.topDoor, this.topDoorGraphic], angle: -90, duration: 300, ease: 'Sine.easeOut' });
   }
 
   closeTopDoor(){
@@ -452,8 +583,8 @@ class MainScene extends Phaser.Scene {
     this.topDoor.isOpen = false;
     // Re-enable collision
     if(this.topDoor.body) this.topDoor.body.enable = true;
-    // Animate back to closed
-    this.tweens.add({ targets: this.topDoor, angle: 0, duration: 300, ease: 'Sine.easeOut' });
+    // Animate back to closed for both
+    this.tweens.add({ targets: [this.topDoor, this.topDoorGraphic], angle: 0, duration: 300, ease: 'Sine.easeOut' });
   }
 
   createSpeechBubble(x, y, text, depth = 5){
@@ -645,7 +776,17 @@ class MainScene extends Phaser.Scene {
       const dx = pt.x - from.x, dy = pt.y - from.y;
       const dist = Math.sqrt(dx*dx + dy*dy);
       const dur = Math.max(50, (dist / speed) * 1000);
-      tweens.push({ targets: customer, x: pt.x, y: pt.y, duration: dur, ease: 'Linear' });
+      // Calculate angle for this segment
+      const angle = Math.atan2(dy, dx) * Phaser.Math.RAD_TO_DEG;
+      const rotation = angle - 90 + 180; // -90 to face forward, +180 for sprite flip
+      tweens.push({ 
+        targets: customer, 
+        x: pt.x, 
+        y: pt.y, 
+        duration: dur, 
+        ease: 'Linear',
+        onStart: () => customer.setAngle(rotation)
+      });
       from = {x: pt.x, y: pt.y};
     });
     this.tweens.timeline({ tweens, onComplete: ()=> onComplete && onComplete() });
@@ -699,9 +840,12 @@ class MainScene extends Phaser.Scene {
     // mark that order is now being processed (customer waiting)
     table.orderTaken = true;
     if(table.orderText) table.orderText.setText('Ordered');
-    if(table.orderBubble && table.orderBubble.textObj){
-      table.orderBubble.textObj.setText(table.order + ' (Taken)');
+    // Recreate the speech bubble with the new text to fit properly
+    if(table.orderBubble){
+      if(table.orderBubble.graphics) table.orderBubble.graphics.destroy();
+      if(table.orderBubble.textObj) table.orderBubble.textObj.destroy();
     }
+    table.orderBubble = this.createSpeechBubble(table.x, table.y - 80, table.order + ' (Ordered)');
     if(this.statusEl) this.statusEl.textContent = 'Status: Took order - ' + table.order;
     this.updateUI();
   }
@@ -745,6 +889,7 @@ class MainScene extends Phaser.Scene {
       this.isCooking = false;
       // Create food item at oven location with dish-specific texture
       const food = this.add.image(this.kitchen.x, this.kitchen.y, dishName);
+      food.setDisplaySize(28, 28);
       food.dishName = dishName;
       this.foodItems.add(food);
       if(this.statusEl) this.statusEl.textContent = 'Status: Cooked ' + dishName + ' (at oven)';
@@ -815,7 +960,8 @@ class MainScene extends Phaser.Scene {
     const upgradeDefs = [
       { id: 'ovenSpeed', name: 'Oven Speed Boost', desc: 'Cook 30% faster per level', baseCost: 40 },
       { id: 'earnRate', name: 'Better Prices', desc: 'Earn $5 more per dish per level', baseCost: 35 },
-      { id: 'patience', name: 'Better Service', desc: 'Customers wait 3s longer per level', baseCost: 30 }
+      { id: 'patience', name: 'Better Service', desc: 'Customers wait 3s longer per level', baseCost: 30 },
+      { id: 'playerSpeed', name: 'Shoes Upgrade', desc: 'Move 20% faster per level', baseCost: 45 }
     ];
     upgradeDefs.forEach(upgrade => {
       const level = this.upgrades[upgrade.id];
@@ -841,7 +987,8 @@ class MainScene extends Phaser.Scene {
       this.money -= cost;
       this.upgrades[upgradeId] = (this.upgrades[upgradeId] || 0) + 1;
       // Save upgrade state
-      localStorage.setItem(`upgrade${upgradeId.charAt(0).toUpperCase() + upgradeId.slice(1)}`, String(this.upgrades[upgradeId]));
+      this.safeSet(`upgrade${upgradeId.charAt(0).toUpperCase() + upgradeId.slice(1)}`, this.upgrades[upgradeId]);
+      if(upgradeId === 'playerSpeed') this.recalcPlayerSpeed();
       this.updateUI();
       this.renderUpgrades();
       if(this.statusEl) this.statusEl.textContent = 'Status: Bought upgrade!';
@@ -920,15 +1067,9 @@ class MainScene extends Phaser.Scene {
   }
 
   saveGame(){
-    try{
-      localStorage.setItem('money', String(this.money));
-      localStorage.setItem('cookSpeed', String(this.cookSpeed || 1));
-      const el = document.getElementById('saveStatus'); if(el) el.textContent = 'Saved';
-      // clear the saved text after a short time
-      this.time && this.time.delayedCall && this.time.delayedCall(900, ()=>{ if(el) el.textContent = ''; }, [], this);
-    }catch(e){
-      console.warn('Failed to save game', e);
-    }
+    this.saveSlotData();
+    const el = document.getElementById('saveStatus'); if(el) el.textContent = 'Saved';
+    this.time && this.time.delayedCall && this.time.delayedCall(900, ()=>{ if(el) el.textContent = ''; }, [], this);
   }
 }
 
@@ -941,14 +1082,25 @@ const config = {
   scene: [ MainScene ]
 };
 
-window.onload = ()=>{
-  const game = new Phaser.Game(config);
+let gameInstance = null;
+window.gameInstance = null;
+
+window.startPhaserGame = ()=>{
+  if(gameInstance) {
+    gameInstance.destroy(true);
+  }
+  gameInstance = new Phaser.Game(config);
+  window.gameInstance = gameInstance;
   // Make UI updates on each frame for status and expose scene globally for upgrade modal
-  game.events.on('step', ()=>{
-    const scene = game.scene.getScene('MainScene');
+  gameInstance.events.on('step', ()=>{
+    const scene = gameInstance.scene.getScene('MainScene');
     if(scene){
       scene.updateUI();
       window.gameScene = scene; // store for modal button clicks
     }
   });
+};
+
+window.onload = ()=>{
+  // Menu system will call startPhaserGame() when user selects a save
 };

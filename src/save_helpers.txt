@@ -1,0 +1,96 @@
+// Save Slot Wrappers - Add these after safeSet in main.js
+// Use these throughout the code instead of direct localStorage access
+
+// Get current save slot name
+getCurrentSaveSlot() {
+  try {
+    return localStorage.getItem('currentSaveSlot') || 'default';
+  } catch (e) {
+    return 'default';
+  }
+}
+
+// Get value from current save slot
+getSaveSlotData(key) {
+  const slotName = this.getCurrentSaveSlot();
+  try {
+    const saveKey = `save_${slotName}`;
+    const saveData = localStorage.getItem(saveKey);
+    if (!saveData) return null;
+    const parsed = JSON.parse(saveData);
+    return parsed[key] !== undefined ? parsed[key] : null;
+  } catch (e) {
+    this.logWarn('Failed to get save slot data: ' + key);
+    return null;
+  }
+}
+
+// Save entire slot data
+saveSl otData() {
+  const slotName = this.getCurrentSaveSlot();
+  const saveData = {
+    money: this.money || 0,
+    cookSpeed: this.cookSpeed || 1,
+    upgradeOvenSpeed: (this.upgrades && this.upgrades.ovenSpeed) || 0,
+    upgradeEarnRate: (this.upgrades && this.upgrades.earnRate) || 0,
+    upgradePatience: (this.upgrades && this.upgrades.patience) || 0,
+    upgradePlayerSpeed: (this.upgrades && this.upgrades.playerSpeed) || 0,
+    timestamp: Date.now()
+  };
+  
+  try {
+    const saveKey = `save_${slotName}`;
+    localStorage.setItem(saveKey, JSON.stringify(saveData));
+    // Also save to individual keys for backward compatibility
+    this.safeSet('money', this.money);
+    this.safeSet('cookSpeed', this.cookSpeed || 1);
+    this.safeSet('upgradeOvenSpeed', saveData.upgradeOvenSpeed);
+    this.safeSet('upgradeEarnRate', saveData.upgradeEarnRate);
+    this.safeSet('upgradePatience', saveData.upgradePatience);
+    this.safeSet('upgradePlayerSpeed', saveData.upgradePlayerSpeed);
+    return true;
+  } catch (e) {
+    this.logWarn('Failed to save slot data');
+    return false;
+  }
+}
+
+// Load from current save slot
+loadSlotData() {
+  const slotName = this.getCurrentSaveSlot();
+  try {
+    const saveKey = `save_${slotName}`;
+    const saveData = localStorage.getItem(saveKey);
+    if (!saveData) {
+      // No save data, return defaults
+      return {
+        money: 0,
+        cookSpeed: 1,
+        upgradeOvenSpeed: 0,
+        upgradeEarnRate: 0,
+        upgradePatience: 0,
+        upgradePlayerSpeed: 0
+      };
+    }
+    const parsed = JSON.parse(saveData);
+    return {
+      money: parsed.money || 0,
+      cookSpeed: parsed.cookSpeed || 1,
+      upgradeOvenSpeed: parsed.upgradeOvenSpeed || 0,
+      upgradeEarnRate: parsed.upgradeEarnRate || 0,
+      upgradePatience: parsed.upgradePatience || 0,
+      upgradePlayerSpeed: parsed.upgradePlayerSpeed || 0
+    };
+  } catch (e) {
+    this.logWarn('Failed to load slot data');
+    // Fallback to individual keys
+    return {
+      money: this.safeGetInt('money'),
+      cookSpeed: this.safeGetFloat('cookSpeed', 1),
+      upgradeOvenSpeed: this.safeGetInt('upgradeOvenSpeed'),
+      upgradeEarnRate: this.safeGetInt('upgradeEarnRate'),
+      upgradePatience: this.safeGetInt('upgradePatience'),
+      upgradePlayerSpeed: this.safeGetInt('upgradePlayerSpeed')
+    };
+  }
+}

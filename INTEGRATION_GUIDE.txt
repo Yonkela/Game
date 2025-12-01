@@ -1,0 +1,149 @@
+// ============= COMPLETE SAVE SYSTEM INTEGRATION GUIDE =============
+// Follow these steps to integrate the save slot system into main.js
+
+/* STEP 1: Add save slot methods after safeSet() method (around line 233)
+   Insert this entire block:
+*/
+
+  // ---- Save slot system ----
+  getCurrentSaveSlot() {
+    try {
+      return localStorage.getItem('currentSaveSlot') || 'default';
+    } catch (e) {
+      return 'default';
+    }
+  }
+
+  loadSlotData() {
+    const slotName = this.getCurrentSaveSlot();
+    try {
+      const saveKey = `save_${slotName}`;
+      const saveData = localStorage.getItem(saveKey);
+      if (!saveData) {
+        return { money: 0, cookSpeed: 1, upgradeOvenSpeed: 0, upgradeEarnRate: 0, upgradePatience: 0, upgradePlayerSpeed: 0 };
+      }
+      const parsed = JSON.parse(saveData);
+      return {
+        money: parsed.money || 0,
+        cookSpeed: parsed.cookSpeed || 1,
+        upgradeOvenSpeed: parsed.upgradeOvenSpeed || 0,
+        upgradeEarnRate: parsed.upgradeEarnRate || 0,
+        upgradePatience: parsed.upgradePatience || 0,
+        upgradePlayerSpeed: parsed.upgradePlayerSpeed || 0
+      };
+    } catch (e) {
+      this.logWarn('Failed to load slot data');
+      return { money: this.safeGetInt('money'), cookSpeed: this.safeGetFloat('cookSpeed', 1), upgradeOvenSpeed: this.safeGetInt('upgradeOvenSpeed'), upgradeEarnRate: this.safeGetInt('upgradeEarnRate'), upgradePatience: this.safeGetInt('upgradePatience'), upgradePlayerSpeed: this.safeGetInt('upgradePlayerSpeed') };
+    }
+  }
+
+  saveSlotData() {
+    const slotName = this.getCurrentSaveSlot();
+    const saveData = {
+      money: this.money || 0,
+      cookSpeed: this.cookSpeed || 1,
+      upgradeOvenSpeed: (this.upgrades && this.upgrades.ovenSpeed) || 0,
+      upgradeEarnRate: (this.upgrades && this.upgrades.earnRate) || 0,
+      upgradePatience: (this.upgrades && this.upgrades.patience) || 0,
+      upgradePlayerSpeed: (this.upgrades && this.upgrades.playerSpeed) || 0,
+      timestamp: Date.now()
+    };
+    try {
+      const saveKey = `save_${slotName}`;
+      localStorage.setItem(saveKey, JSON.stringify(saveData));
+      this.safeSet('money', this.money);
+      this.safeSet('cookSpeed', this.cookSpeed || 1);
+      this.safeSet('upgradeOvenSpeed', saveData.upgradeOvenSpeed);
+      this.safeSet('upgradeEarnRate', saveData.upgradeEarnRate);
+      this.safeSet('upgradePatience', saveData.upgradePatience);
+      this.safeSet('upgradePlayerSpeed', saveData.upgradePlayerSpeed);
+      return true;
+    } catch (e) {
+      this.logWarn('Failed to save slot data');
+      return false;
+    }
+  }
+
+/* STEP 2: Replace game state loading (around line 173-175)
+   FIND:
+    this.money = this.safeGetInt ? this.safeGetInt('money') : (parseInt(localStorage.getItem('money'))||0);
+    this.cookSpeed = this.safeGetFloat ? this.safeGetFloat('cookSpeed', 1.0) : (parseFloat(localStorage.getItem('cookSpeed'))||1.0);
+    this.isCooking = false;
+   
+   REPLACE WITH:
+*/
+    // Game state (load from current save slot)
+    const saveData = this.loadSlotData();
+    this.money = saveData.money;
+    this.cookSpeed = saveData.cookSpeed;
+    this.isCooking = false;
+
+/* STEP 3: Replace upgrade initialization (around line 185-191)
+   FIND:
+    this.upgrades = {
+      ovenSpeed: this.safeGetInt ? this.safeGetInt('upgradeOvenSpeed') : (parseInt(localStorage.getItem('upgradeOvenSpeed'))||0),
+      earnRate: this.safeGetInt ? this.safeGetInt('upgradeEarnRate') : (parseInt(localStorage.getItem('upgradeEarnRate'))||0),
+      patience: this.safeGetInt ? this.safeGetInt('upgradePatience') : (parseInt(localStorage.getItem('upgradePatience'))||0),
+      playerSpeed: this.safeGetInt ? this.safeGetInt('upgradePlayerSpeed') : (parseInt(localStorage.getItem('upgradePlayerSpeed'))||0)
+    };
+   
+   REPLACE WITH:
+*/
+    // Initialize upgrade state from save
+    this.upgrades = {
+      ovenSpeed: saveData.upgradeOvenSpeed,
+      earnRate: saveData.upgradeEarnRate,
+      patience: saveData.upgradePatience,
+      playerSpeed: saveData.playerSpeed
+    };
+
+/* STEP 4: Replace saveGame method (around line 945-958)
+   FIND the entire saveGame() method and REPLACE WITH:
+*/
+  saveGame(){
+    this.saveSlotData();
+    const el = document.getElementById('saveStatus'); if(el) el.textContent = 'Saved';
+    this.time && this.time.delayedCall && this.time.delayedCall(900, ()=>{ if(el) el.textContent = ''; }, [], this);
+  }
+
+/* STEP 5: Replace window.onload (around line 971-980)
+   FIND:
+    window.onload = ()=>{
+      const game = new Phaser.Game(config);
+      game.events.on('step', ()=>{
+        const scene = game.scene.getScene('MainScene');
+        if(scene){
+          scene.updateUI();
+          window.gameScene = scene;
+        }
+      });
+    };
+   
+   REPLACE WITH:
+*/
+let gameInstance = null;
+
+window.startPhaserGame = ()=>{
+  if(gameInstance) {
+    gameInstance.destroy(true);
+  }
+  gameInstance = new Phaser.Game(config);
+  gameInstance.events.on('step', ()=>{
+    const scene = gameInstance.scene.getScene('MainScene');
+    if(scene){
+      scene.updateUI();
+      window.gameScene = scene;
+    }
+  });
+};
+
+window.onload = ()=>{
+  // Menu system will call startPhaserGame() when user selects a save
+};
+
+// ============= END OF INTEGRATION GUIDE =============
+// After making these changes:
+// 1. Save main.js
+// 2. Refresh your browser
+// 3. You should see the menu screen with New Save, Continue, and Load Save buttons
+// 4. The game will only start after you select an option from the menu
